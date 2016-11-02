@@ -102,6 +102,10 @@ GTEST_DECLARE_string_(color);
 // the tests to run. If the filter is not given all tests are executed.
 GTEST_DECLARE_string_(filter);
 
+// This flag sets up the tag filter to select by comma separated key=value pairs
+// the tests to run. If the filter is not given all tests are executed.
+GTEST_DECLARE_string_(tag_filter);
+
 // This flag causes the Google Test to list tests. None of the tests listed
 // are actually run if the flag is provided.
 GTEST_DECLARE_bool_(list_tests);
@@ -156,6 +160,7 @@ class GTestFlagSaver;
 class TestResultAccessor;
 class TestEventListenersAccessor;
 class TestEventRepeater;
+class UnitTestOptions;
 class WindowsDeathTest;
 class UnitTestImpl* GetUnitTestImpl();
 void ReportFailureInUnknownLocation(TestPartResult::Type result_type,
@@ -508,7 +513,7 @@ class TestProperty {
 class GTEST_API_ TestResult {
  public:
   // Creates an empty TestResult.
-  TestResult();
+  TestResult(const char* tags = "");
 
   // D'tor.  Do not inherit from TestResult.
   ~TestResult();
@@ -548,6 +553,7 @@ class GTEST_API_ TestResult {
  private:
   friend class TestInfo;
   friend class UnitTest;
+  friend class internal::UnitTestOptions;
   friend class internal::DefaultGlobalTestPartResultReporter;
   friend class internal::ExecDeathTest;
   friend class internal::TestResultAccessor;
@@ -562,6 +568,11 @@ class GTEST_API_ TestResult {
   // Gets the vector of TestProperties.
   const std::vector<TestProperty>& test_properties() const {
     return test_properties_;
+  }
+
+  // Gets the vector of TagProperties.
+  const std::vector<TestProperty>& tag_properties() const {
+    return tag_properties_;
   }
 
   // Sets the elapsed time.
@@ -606,6 +617,8 @@ class GTEST_API_ TestResult {
   int death_test_count_;
   // The elapsed time, in milliseconds.
   TimeInMillis elapsed_time_;
+  // Saved off properties given at test definition macro as tags
+  std::vector<TestProperty> tag_properties_;
 
   // We disallow copying TestResult.
   GTEST_DISALLOW_COPY_AND_ASSIGN_(TestResult);
@@ -686,7 +699,8 @@ class GTEST_API_ TestInfo {
       internal::TypeId fixture_class_id,
       Test::SetUpTestCaseFunc set_up_tc,
       Test::TearDownTestCaseFunc tear_down_tc,
-      internal::TestFactoryBase* factory);
+      internal::TestFactoryBase* factory,
+      const char* tags);
 
   // Constructs a TestInfo object. The newly constructed instance assumes
   // ownership of the factory object.
@@ -694,7 +708,8 @@ class GTEST_API_ TestInfo {
            const char* a_type_param,
            const char* a_value_param,
            internal::TypeId fixture_class_id,
-           internal::TestFactoryBase* factory);
+           internal::TestFactoryBase* factory,
+           const char* tags);
 
   // Increments the number of death tests encountered in this test so
   // far.

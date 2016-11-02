@@ -212,8 +212,18 @@ GTEST_DEFINE_string_(
     "exclude).  A test is run if it matches one of the positive "
     "patterns and does not match any of the negative patterns.");
 
-GTEST_DEFINE_bool_(list_tests, false,
-                   "List all tests without running them.");
+GTEST_DEFINE_string_(
+    tag_filter,
+    internal::StringFromGTestEnv("tag_filter", ""),
+    "A comma-separated list of key=value pairs for filtering the"
+    "tests to run. A test is run iff all key=value tags are matching"
+    "on the test. Tests can have other tags but these are the required"
+    "tags.");
+
+GTEST_DEFINE_bool_(
+    list_tests,
+    false,
+    "List all tests without running them.");
 
 GTEST_DEFINE_string_(
     output,
@@ -499,6 +509,51 @@ bool UnitTestOptions::FilterMatchesTest(const String &test_case_name,
   // test if any pattern in it matches the test.
   return (MatchesFilter(full_name, positive.c_str()) &&
           !MatchesFilter(full_name, negative.c_str()));
+}
+
+bool UnitTestOptions::TagFilterMatchesTags(const TestInfo& info)
+{
+  static TagMapType flag_map = ParseTags(GTEST_FLAG(tag_filter).c_str());
+
+  // Move all properties to an STL map
+  TagMapType test_map;
+  for (std::vector<TestProperty>::const_iterator it = info.result()->tag_properties().begin();
+    it != info.result()->tag_properties().end(); ++it)
+  {
+    test_map[it->key()] = it->value();
+  }
+
+  // Use the two STL maps to test if all the key=value pairs in flag_map exist in test_map
+  return std::includes(test_map.begin(), test_map.end(), flag_map.begin(), flag_map.end());
+}
+
+UnitTestOptions::TagMapType UnitTestOptions::ParseTags(const char* tag_string)
+{
+  TagMapType tag_map;
+  std::istringstream full_stream(tag_string);
+  std::string tag;
+
+  // Parse many tags key=value pairs, split by comma
+  while (std::getline(full_stream, tag, ','))
+  {
+    // Parse each pair, split by equals
+    size_t comma_index = tag.find('=');
+    if (tag.length() < 3 ||
+        comma_index == 0 ||
+        comma_index == tag.length()-1 ||
+        comma_index == std::string::npos)
+    {
+      ADD_FAILURE()
+        << "Ignoring invalid tag entry '"
+        << tag
+        << "'";
+    }
+    else
+    {
+      tag_map[tag.substr(0, comma_index)] = tag.substr(comma_index + 1);
+    }
+  }
+  return tag_map;
 }
 
 #if GTEST_HAS_SEH
@@ -1771,9 +1826,13 @@ String AppendUserMessage(const String& gtest_msg,
 // class TestResult
 
 // Creates an empty TestResult.
-TestResult::TestResult()
+TestResult::TestResult(const char* tags)
     : death_test_count_(0),
       elapsed_time_(0) {
+  // Parse the tags argument once and save them off so we can restore them between each test
+  internal::UnitTestOptions::TagMapType tag_map = internal::UnitTestOptions::ParseTags(tags);
+  for (internal::UnitTestOptions::TagMapType::const_iterator tag = tag_map.begin(); tag != tag_map.end(); ++tag)
+    tag_properties_.push_back(TestProperty(tag->first.c_str(), tag->second.c_str()));
 }
 
 // D'tor.
@@ -1844,7 +1903,7 @@ bool TestResult::ValidateTestProperty(const TestProperty& test_property) {
 // Clears the object.
 void TestResult::Clear() {
   test_part_results_.clear();
-  test_properties_.clear();
+  test_properties_ = tag_properties_;	// Add back the original properties every test
   death_test_count_ = 0;
   elapsed_time_ = 0;
 }
@@ -2192,7 +2251,8 @@ TestInfo::TestInfo(const char* a_test_case_name,
                    const char* a_type_param,
                    const char* a_value_param,
                    internal::TypeId fixture_class_id,
-                   internal::TestFactoryBase* factory)
+                   internal::TestFactoryBase* factory,
+                   const char* a_tags)
     : test_case_name_(a_test_case_name),
       name_(a_name),
       type_param_(a_type_param ? new std::string(a_type_param) : NULL),
@@ -2202,7 +2262,8 @@ TestInfo::TestInfo(const char* a_test_case_name,
       is_disabled_(false),
       matches_filter_(false),
       factory_(factory),
-      result_() {}
+      result_(a_tags) {
+}
 
 // Destructs a TestInfo object.
 TestInfo::~TestInfo() { delete factory_; }
@@ -2233,10 +2294,11 @@ TestInfo* MakeAndRegisterTestInfo(
     TypeId fixture_class_id,
     SetUpTestCaseFunc set_up_tc,
     TearDownTestCaseFunc tear_down_tc,
-    TestFactoryBase* factory) {
+    TestFactoryBase* factory,
+    const char* tags) {
   TestInfo* const test_info =
       new TestInfo(test_case_name, name, type_param, value_param,
-                   fixture_class_id, factory);
+                   fixture_class_id, factory, tags);
   GetUnitTestImpl()->AddTestInfo(set_up_tc, tear_down_tc, test_info);
   return test_info;
 }
@@ -4405,7 +4467,8 @@ int UnitTestImpl::FilterTests(ReactionToSharding shard_tests) {
 
       const bool matches_filter =
           internal::UnitTestOptions::FilterMatchesTest(test_case_name,
-                                                       test_name);
+                                                       test_name) &&
+          internal::UnitTestOptions::TagFilterMatchesTags(*test_info);
       test_info->matches_filter_ = matches_filter;
 
       const bool is_runnable =
@@ -4714,6 +4777,8 @@ static const char kColorEncodedHelpMessage[] =
 "      Run only the tests whose name matches one of the positive patterns but\n"
 "      none of the negative patterns. '?' matches any single character; '*'\n"
 "      matches any substring; ':' separates two patterns.\n"
+"  @G--" GTEST_FLAG_PREFIX_ "tag_filter=@Ykey1=value1[@G,@Ykey2=value2@G,@Y...]@D\n"
+"      Run only tests whose tags all match the given key=value pairs.\n"
 "  @G--" GTEST_FLAG_PREFIX_ "also_run_disabled_tests@D\n"
 "      Run all disabled tests too.\n"
 "\n"
@@ -4791,6 +4856,7 @@ void ParseGoogleTestFlagsOnlyImpl(int* argc, CharType** argv) {
         ParseBoolFlag(arg, kDeathTestUseFork,
                       &GTEST_FLAG(death_test_use_fork)) ||
         ParseStringFlag(arg, kFilterFlag, &GTEST_FLAG(filter)) ||
+        ParseStringFlag(arg, kTagFilterFlag, &GTEST_FLAG(tag_filter)) ||
         ParseStringFlag(arg, kInternalRunDeathTestFlag,
                         &GTEST_FLAG(internal_run_death_test)) ||
         ParseBoolFlag(arg, kListTestsFlag, &GTEST_FLAG(list_tests)) ||

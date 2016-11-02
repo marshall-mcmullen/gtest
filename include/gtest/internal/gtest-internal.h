@@ -570,7 +570,8 @@ GTEST_API_ TestInfo* MakeAndRegisterTestInfo(
     TypeId fixture_class_id,
     SetUpTestCaseFunc set_up_tc,
     TearDownTestCaseFunc tear_down_tc,
-    TestFactoryBase* factory);
+    TestFactoryBase* factory,
+    const char* tags = "");
 
 // If *pstr starts with the given prefix, modifies *pstr to be right
 // past the prefix and returns true; otherwise leaves *pstr unchanged
@@ -644,7 +645,8 @@ class TypeParameterizedTest {
   // Types).  Valid values for 'index' are [0, N - 1] where N is the
   // length of Types.
   static bool Register(const char* prefix, const char* case_name,
-                       const char* test_names, int index) {
+                       const char* test_names, int index,
+                       const char* tags) {
     typedef typename Types::Head Type;
     typedef Fixture<Type> FixtureClass;
     typedef typename GTEST_BIND_(TestSel, Type) TestClass;
@@ -660,11 +662,12 @@ class TypeParameterizedTest {
         GetTypeId<FixtureClass>(),
         TestClass::SetUpTestCase,
         TestClass::TearDownTestCase,
-        new TestFactoryImpl<TestClass>);
+        new TestFactoryImpl<TestClass>,
+		tags);
 
     // Next, recurses (at compile time) with the tail of the type list.
     return TypeParameterizedTest<Fixture, TestSel, typename Types::Tail>
-        ::Register(prefix, case_name, test_names, index + 1);
+        ::Register(prefix, case_name, test_names, index + 1, tags);
   }
 };
 
@@ -673,7 +676,8 @@ template <GTEST_TEMPLATE_ Fixture, class TestSel>
 class TypeParameterizedTest<Fixture, TestSel, Types0> {
  public:
   static bool Register(const char* /*prefix*/, const char* /*case_name*/,
-                       const char* /*test_names*/, int /*index*/) {
+                       const char* /*test_names*/, int /*index*/,
+                       const char* /*tags*/) {
     return true;
   }
 };
@@ -686,16 +690,16 @@ template <GTEST_TEMPLATE_ Fixture, typename Tests, typename Types>
 class TypeParameterizedTestCase {
  public:
   static bool Register(const char* prefix, const char* case_name,
-                       const char* test_names) {
+                       const char* test_names, const char* tags) {
     typedef typename Tests::Head Head;
 
     // First, register the first test in 'Test' for each type in 'Types'.
     TypeParameterizedTest<Fixture, Head, Types>::Register(
-        prefix, case_name, test_names, 0);
+        prefix, case_name, test_names, 0, tags);
 
     // Next, recurses (at compile time) with the tail of the test list.
     return TypeParameterizedTestCase<Fixture, typename Tests::Tail, Types>
-        ::Register(prefix, case_name, SkipComma(test_names));
+        ::Register(prefix, case_name, SkipComma(test_names), tags);
   }
 };
 
@@ -704,7 +708,7 @@ template <GTEST_TEMPLATE_ Fixture, typename Types>
 class TypeParameterizedTestCase<Fixture, Templates0, Types> {
  public:
   static bool Register(const char* /*prefix*/, const char* /*case_name*/,
-                       const char* /*test_names*/) {
+                       const char* /*test_names*/, const char* /*tags*/) {
     return true;
   }
 };

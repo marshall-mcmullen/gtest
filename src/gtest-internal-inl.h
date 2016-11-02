@@ -55,6 +55,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <map>
 
 #include "gtest/internal/gtest-port.h"
 
@@ -86,6 +87,7 @@ const char kBreakOnFailureFlag[] = "break_on_failure";
 const char kCatchExceptionsFlag[] = "catch_exceptions";
 const char kColorFlag[] = "color";
 const char kFilterFlag[] = "filter";
+const char kTagFilterFlag[] = "tag_filter";
 const char kListTestsFlag[] = "list_tests";
 const char kOutputFlag[] = "output";
 const char kPrintTimeFlag[] = "print_time";
@@ -158,6 +160,7 @@ class GTestFlagSaver {
     death_test_style_ = GTEST_FLAG(death_test_style);
     death_test_use_fork_ = GTEST_FLAG(death_test_use_fork);
     filter_ = GTEST_FLAG(filter);
+    tag_filter_ = GTEST_FLAG(tag_filter);
     internal_run_death_test_ = GTEST_FLAG(internal_run_death_test);
     list_tests_ = GTEST_FLAG(list_tests);
     output_ = GTEST_FLAG(output);
@@ -179,6 +182,7 @@ class GTestFlagSaver {
     GTEST_FLAG(death_test_style) = death_test_style_;
     GTEST_FLAG(death_test_use_fork) = death_test_use_fork_;
     GTEST_FLAG(filter) = filter_;
+    GTEST_FLAG(tag_filter) = tag_filter_;
     GTEST_FLAG(internal_run_death_test) = internal_run_death_test_;
     GTEST_FLAG(list_tests) = list_tests_;
     GTEST_FLAG(output) = output_;
@@ -199,6 +203,7 @@ class GTestFlagSaver {
   String death_test_style_;
   bool death_test_use_fork_;
   String filter_;
+  String tag_filter_;
   String internal_run_death_test_;
   bool list_tests_;
   String output_;
@@ -386,6 +391,16 @@ class GTEST_API_ UnitTestOptions {
   // name and the test name.
   static bool FilterMatchesTest(const String &test_case_name,
                                 const String &test_name);
+
+  // Returns true iff all the user specified tags filter matches all
+  // the tags in the test's TestInfo.
+  static bool TagFilterMatchesTags(const TestInfo& info);
+
+  typedef std::map<String,String> TagMapType;
+
+  // Returns a map of key=value pairs given a comma separated argument
+  // such as "key1=value1,key2=value2".
+  static TagMapType ParseTags(const char* tag_string);
 
 #if GTEST_OS_WINDOWS
   // Function for supporting the gtest_catch_exception flag.

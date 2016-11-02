@@ -449,6 +449,18 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
   typedef typename TestCase::ParamType ParamType;
   // A function that returns an instance of appropriate generator type.
   typedef ParamGenerator<ParamType>(GeneratorCreationFunc)();
+  // Records from INSTANTIATE_TEST_CASE_P
+  struct TestInstance {
+    TestInstance(const string& instantiation_name,
+                 GeneratorCreationFunc* func,
+                 const char* tags) :
+        instantiation_name_(instantiation_name),
+        func_(func),
+        tags_(tags) {};
+    string instantiation_name_;
+    GeneratorCreationFunc* func_;
+    string tags_;
+  };
 
   explicit ParameterizedTestCaseInfo(const char* name)
       : test_case_name_(name) {}
@@ -475,8 +487,9 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
   int AddTestCaseInstantiation(const string& instantiation_name,
                                GeneratorCreationFunc* func,
                                const char* /* file */,
-                               int /* line */) {
-    instantiations_.push_back(::std::make_pair(instantiation_name, func));
+                               int /* line */,
+                               const char* tags = "") {
+    instantiations_.push_back(TestInstance(instantiation_name, func, tags));
     return 0;  // Return value used only to run this method in namespace scope.
   }
   // UnitTest class invokes this method to register tests in this test case
@@ -491,8 +504,9 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
       for (typename InstantiationContainer::iterator gen_it =
                instantiations_.begin(); gen_it != instantiations_.end();
                ++gen_it) {
-        const string& instantiation_name = gen_it->first;
-        ParamGenerator<ParamType> generator((*gen_it->second)());
+        const string& instantiation_name = gen_it->instantiation_name_;
+        ParamGenerator<ParamType> generator((*gen_it->func_)());
+		const string& tags = gen_it->tags_;
 
         Message test_case_name_stream;
         if ( !instantiation_name.empty() )
@@ -513,7 +527,8 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
               GetTestCaseTypeId(),
               TestCase::SetUpTestCase,
               TestCase::TearDownTestCase,
-              test_info->test_meta_factory->CreateTestFactory(*param_it));
+              test_info->test_meta_factory->CreateTestFactory(*param_it),
+              tags.c_str());
         }  // for param_it
       }  // for gen_it
     }  // for test_it
@@ -537,7 +552,7 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
   typedef ::std::vector<linked_ptr<TestInfo> > TestInfoContainer;
   // Keeps pairs of <Instantiation name, Sequence generator creation function>
   // received from INSTANTIATE_TEST_CASE_P macros.
-  typedef ::std::vector<std::pair<string, GeneratorCreationFunc*> >
+  typedef ::std::vector<TestInstance>
       InstantiationContainer;
 
   const string test_case_name_;
